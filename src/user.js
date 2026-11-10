@@ -13,8 +13,8 @@ export async function handleUser(env, message) {
 
   if (text === "/start") {
     const buttons = await getButtons(env);
-
     const keyboard = [];
+
     for (let i = 0; i < buttons.length; i += 2) {
       keyboard.push(
         buttons.slice(i, i + 2).map(b => b.label)
@@ -82,10 +82,23 @@ export async function handleUser(env, message) {
       }
     }
 
+    const subscription = await getSubscription(env, userId);
+
+    if (!subscription) {
+      await saveSession(env, userId, "payment_required", button.id);
+
+      await sendMessage(
+        env,
+        chatId,
+        "A subscription is required to continue.\n\nMonthly: ₹99 (30 days)\nLifetime: ₹2,999 (no expiry)\n\nPayment options will be available soon."
+      );
+      return;
+    }
+
     const request = await env.DB.prepare(
       `INSERT INTO requests
-       (telegram_user_id, username, button_id, submitted_text)
-       VALUES (?, ?, ?, ?)`
+       (telegram_user_id, username, button_id, submitted_text, status)
+       VALUES (?, ?, ?, ?, 'pending_admin')`
     ).bind(
       userId,
       message.from.username || "",
@@ -93,22 +106,26 @@ export async function handleUser(env, message) {
       text
     ).run();
 
-    await saveSession(env, userId, "awaiting_unlock");
+    await saveSession(env, userId, "awaiting_admin_reply");
 
-    await sendMessage(env, chatId, "Your request has been received.", {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: "Unlock It", callback_data: `unlock:${request.meta.last_row_id}` }
-        ]]
-      }
-    });
+    await sendMessage(
+      env,
+      chatId,
+      "Your request has been submitted to the admin. Request ID: " +
+        request.meta.last_row_id
+    );
 
     return;
   }
 
-  const subscription = await getSubscription(env, userId);
-
-  if (!subscription) {
-    await sendMessage(env, chatId, "Please select a service from the keyboard.");
+  if (session?.state === "payment_required") {
+    await sendMessage(
+      env,
+      chatId,
+      "Your request is waiting for an active subscription. Please complete the subscription process."
+    );
+    return;
   }
+
+  await sendMessage(env, chatId, "Please select a service from the keyboard.");
 }
