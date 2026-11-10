@@ -1,13 +1,13 @@
 
 import { handleAdmin } from "./admin.js";
-import { sendMessage } from "./telegram.js";
+import { handleUser } from "./user.js";
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
-      return Response.json({ ok: true, service: "telegram-service-bot" });
+      return Response.json({ ok: true, database: Boolean(env.DB) });
     }
 
     if (url.pathname !== "/telegram/webhook" || request.method !== "POST") {
@@ -25,18 +25,12 @@ export default {
       const update = await request.json();
       const message = update.message;
 
-      if (!message?.text) {
-        return Response.json({ ok: true });
-      }
+      if (!message) return Response.json({ ok: true });
 
-      const handled = await handleAdmin(message, env);
+      const adminHandled = await handleAdmin(message, env);
 
-      if (!handled && message.text === "/start") {
-        await sendMessage(
-          env,
-          message.chat.id,
-          "Welcome! The service bot is being configured."
-        );
+      if (!adminHandled) {
+        await handleUser(env, message);
       }
 
       return Response.json({ ok: true });
