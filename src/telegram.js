@@ -1,27 +1,22 @@
-
-export async function telegram(env, method, data) {
+export async function sendMessage(env, chatId, text, extra = {}) {
   const response = await fetch(
-    `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`,
+    `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data)
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        ...extra
+      })
     }
   );
 
   const result = await response.json();
 
   if (!result.ok) {
-    throw new Error(result.description || "Telegram API error");
+    console.error("Telegram API error:", result);
   }
 
-  return result.result;
-}
-
-export async function sendMessage(env, chatId, text, extra = {}) {
-  return telegram(env, "sendMessage", {
-    chat_id: chatId,
-    text,
-    ...extra
-  });
+  return result;
 }
