@@ -1,0 +1,10 @@
+
+name = "telegram-service-bot"
+main = "src/index.js"
+compatibility_date = "2026-11-10"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "telegram-service-bot-db"
+database_id = "YOUR_DATABASE_ID"
+migrations_dir = "migrations"
