@@ -1,48 +1,48 @@
 
-import { handleUser } from "./user.js";
 import { handleAdmin } from "./admin.js";
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" }
-  });
-}
+import { sendMessage } from "./telegram.js";
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
-      return json({ ok: true, service: "telegram-service-bot" });
+      return Response.json({ ok: true, service: "telegram-service-bot" });
     }
 
     if (url.pathname !== "/telegram/webhook" || request.method !== "POST") {
-      return json({ error: "Not found" }, 404);
+      return new Response("Not found", { status: 404 });
     }
 
     if (
       request.headers.get("X-Telegram-Bot-Api-Secret-Token") !==
       env.TELEGRAM_WEBHOOK_SECRET
     ) {
-      return json({ error: "Unauthorized" }, 401);
+      return new Response("Unauthorized", { status: 401 });
     }
 
     try {
       const update = await request.json();
+      const message = update.message;
 
-      if (update.message) {
-        const handled = await handleAdmin(env, update.message);
-
-        if (!handled) {
-          await handleUser(env, update.message);
-        }
+      if (!message?.text) {
+        return Response.json({ ok: true });
       }
 
-      return json({ ok: true });
+      const handled = await handleAdmin(message, env);
+
+      if (!handled && message.text === "/start") {
+        await sendMessage(
+          env,
+          message.chat.id,
+          "Welcome! The service bot is being configured."
+        );
+      }
+
+      return Response.json({ ok: true });
     } catch (error) {
       console.error("Webhook error:", error);
-      return json({ ok: false }, 500);
+      return Response.json({ ok: false }, { status: 500 });
     }
   }
 };
