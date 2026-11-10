@@ -6,5 +6,5 @@ compatibility_date = "2026-11-10"
 [[d1_databases]]
 binding = "DB"
 database_name = "telegram-service-bot-db"
-database_id = "YOUR_DATABASE_ID"
+database_id = "e3f5f605-9a2c-4969-8f08-a39f8110457f"
 migrations_dir = "migrations"
