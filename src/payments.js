@@ -2,26 +2,19 @@
 import { sendMessage } from "./telegram.js";
 
 const PLANS = {
-  monthly: { amount: 9900 },
-  lifetime: { amount: 299900 }
+  monthly: 9900,
+  lifetime: 299900
 };
 
 export async function createPaymentReview(
-  env,
-  userId,
-  plan,
-  method,
-  proofFileId,
-  reference
+  env, userId, plan, method, proofFileId, reference
 ) {
-  const selectedPlan = PLANS[plan];
-
-  if (!selectedPlan || !["upi", "crypto"].includes(method)) {
-    throw new Error("Invalid plan or payment method");
+  if (!PLANS[plan] || !["upi", "crypto"].includes(method)) {
+    throw new Error("Invalid payment details");
   }
 
   if (!proofFileId && !reference) {
-    throw new Error("Payment proof or transaction reference is required");
+    throw new Error("Payment proof required");
   }
 
   const result = await env.DB.prepare(
@@ -33,7 +26,7 @@ export async function createPaymentReview(
     String(userId),
     plan,
     method,
-    selectedPlan.amount,
+    PLANS[plan],
     proofFileId || null,
     reference || null
   ).run();
@@ -46,60 +39,55 @@ export async function createPaymentReview(
 }
 
 export async function notifyPaymentAdmins(env, reviewId) {
-  const admins = await env.DB.prepare(
-    `SELECT telegram_user_id FROM admins WHERE is_active = 1`
-  ).all();
-
   const review = await env.DB.prepare(
-    `SELECT * FROM payment_reviews WHERE id = ?`
+    "SELECT * FROM payment_reviews WHERE id = ?"
   ).bind(reviewId).first();
 
   if (!review) return;
 
+  const admins = await env.DB.prepare(
+    "SELECT telegram_user_id FROM admins WHERE is_active = 1"
+  ).all();
+
   const caption =
     `💳 PAYMENT REVIEW #${review.id}\n\n` +
-    `User ID: ${review.telegram_user_id}\n` +
+    `User: ${review.telegram_user_id}\n` +
     `Plan: ${review.plan}\n` +
     `Method: ${review.method}\n` +
     `Amount: ₹${(review.amount_minor / 100).toFixed(2)}\n` +
     `Reference: ${review.transaction_reference || "Not provided"}\n\n` +
-    `Verify the transaction independently before approving.`;
+    `Verify the actual transaction before approving.`;
 
-  const replyMarkup = {
+  const markup = {
     inline_keyboard: [[
-      {
-        text: "✅ Approve",
-        callback_data: `payment:approve:${review.id}`
-      },
-      {
-        text: "❌ Reject",
-        callback_data: `payment:reject:${review.id}`
-      }
+      { text: "✅ Approve", callback_data: `payment:approve:${review.id}` },
+      { text: "❌ Reject", callback_data: `payment:reject:${review.id}` }
     ]]
   };
 
   for (const admin of admins.results || []) {
-    if (review.proof_file_id) {
-      await fetch(
-        `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: admin.telegram_user_id,
-            photo: review.proof_file_id,
-            caption,
-            reply_markup: replyMarkup
-          })
+    const endpoint = review.proof_file_id ? "sendPhoto" : "sendMessage";
+
+    const payload = review.proof_file_id
+      ? {
+          chat_id: admin.telegram_user_id,
+          photo: review.proof_file_id,
+          caption,
+          reply_markup: markup
         }
-      );
-    } else {
-      await sendMessage(
-        env,
-        admin.telegram_user_id,
-        caption,
-        { reply_markup: replyMarkup }
-      );
-    }
+      : {
+          chat_id: admin.telegram_user_id,
+          text: caption,
+          reply_markup: markup
+        };
+
+    await fetch(
+      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${endpoint}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }
+    );
   }
 }
